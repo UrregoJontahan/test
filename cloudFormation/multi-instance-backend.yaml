@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Configuración automática de EC2 y Parameter Store para la API
+Parameters:
+  KeyName:
+    Description: Nombre del par de llaves SSH para acceder a la instancia EC2
+    Type: String
+    Default: my-keypair
+  InstanceType:
+    Description: Tipo de instancia para la API
+    Type: String
+    Default: t3.micro
+  DBURL:
+    Description: URL de la base de datos
+    Type: String
+    Default: jdbc:mysql://localhost:3306/financial_entity
+  DBUsername:
+    Description: Nombre de usuario de la base de datos
+    Type: String
+    Default: root
+  DBPassword:
+    Description: Contraseña de la base de datos
+    Type: String
+    NoEcho: true
+Resources:
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: MyAPIVPC
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: MyVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: us-east-1a
+  APISecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permitir tráfico para la API y acceso SSH
+      VpcId: MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  DBURLParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /myapp/DB_URL
+      Type: String
+      Value: DBURL
+  DBUsernameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /myapp/DB_USERNAME
+      Type: String
+      Value: DBUsername
+  DBPasswordParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /myapp/DB_PASSWORD
+      Type: String
+      Value: DBPassword
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SSMParameterAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource:
+                  - arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/myapp/DB_URL
+                  - arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/myapp/DB_USERNAME
+                  - arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/myapp/DB_PASSWORD
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - EC2InstanceRole
+  APIInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: InstanceType
+      KeyName: KeyName
+      IamInstanceProfile: EC2InstanceProfile
+      SecurityGroupIds:
+        - APISecurityGroup
+      SubnetId: PublicSubnet
+      ImageId: ami-0c55b159cbfafe1f0
+      Tags:
+        - Key: Name
+          Value: APIInstance
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          amazon-linux-extras install java-openjdk11 git -y
+          cd /home/ec2-user
+
+          # Clonar el repositorio de GitHub
+          git clone https://github.com/tu-usuario/tu-repositorio.git
+
+          # Entrar al directorio del repositorio clonado
+          cd tu-repositorio
+
+          # Compilar el proyecto y generar el archivo JAR
+          ./gradlew build
+
+          # Mover el archivo JAR a la raíz de home
+          cp build/libs/*.jar /home/ec2-user/my-backend.jar
+
+          # Ejecutar la aplicación
+          cd /home/ec2-user
+          java -jar my-backend.jar
+Outputs:
+  APIInstanceId:
+    Description: ID de la instancia EC2 de la API
+    Value: APIInstance
+  APIInstanceIp:
+    Description: IP de la instancia EC2 de la API
+    Value: APIInstance.PrivateIp
