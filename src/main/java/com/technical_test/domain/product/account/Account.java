@@ -44,6 +44,7 @@ public class Account {
 
     @ManyToOne
     @JoinColumn(name = "client_id", nullable = false)
+
     private Client client;
 
     public Account() {
@@ -66,11 +67,9 @@ public class Account {
         this.modificationDate = LocalDate.now();
     }
 
-    // Generar el número de cuenta usando el typeAccount
     public static String generateAccountNumber(String accountType) {
         String prefix = accountType.equalsIgnoreCase("ahorros") ? "53" : "33";
-        // Ajustar el número para que, junto con el prefijo, tenga un total de 10 caracteres
-        String number = String.format("%08d", new Random().nextInt(100000000)); // 8 dígitos en lugar de 9
-        return prefix + number; // Total: 2 (prefijo) + 8 = 10 caracteres
+        String number = String.format("%08d", new Random().nextInt(100000000));
+        return prefix + number;
     }
 }
